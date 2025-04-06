@@ -5,22 +5,22 @@ import androidx.annotation.RawRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -33,6 +33,7 @@ import androidx.compose.material3.contentColorFor
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -43,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.text.TextStyle
@@ -50,9 +52,11 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.res.use
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.emoji_picker_compose.utils.CSVReaderUtil
 import com.emoji_picker_compose.utils.Extensions.noRippleClick
 import com.emoji_picker_compose.utils.UnicodeRenderableManager
+import kotlin.math.ceil
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -71,28 +75,28 @@ fun EmojiPickerBottomSheet(
     contentWindowInsets: @Composable () -> WindowInsets = { BottomSheetDefaults.windowInsets },
     properties: ModalBottomSheetProperties = ModalBottomSheetDefaults.properties,
 ) {
+    val viewModel = viewModel<EmojiVM>()
     val context = LocalContext.current
-    val emojiCategories = getEmojiCategories()
+
+    val emojiCategories = remember {
+        mutableStateListOf<EmojiCategory>()
+    }
 
     var selectedCategoryInd by remember {
         mutableIntStateOf(0)
     }
-    var emojis = remember {
-        mutableStateListOf<String>()
+    val emojis = remember {
+        viewModel.emojis
     }
-    val pagerState = rememberPagerState(
-        pageCount = { emojiCategories.size },
-        initialPage = selectedCategoryInd
-    )
 
-    LaunchedEffect(pagerState.currentPage) {
-        selectedCategoryInd = pagerState.currentPage
-    }
+    val lazyListState = rememberLazyListState()
 
     LaunchedEffect(selectedCategoryInd) {
-        emojis.clear()
-        emojis.addAll(getEmojisByCategory(context, emojiCategories[selectedCategoryInd].resId))
-        pagerState.scrollToPage(selectedCategoryInd)
+        lazyListState.scrollToItem(selectedCategoryInd)
+    }
+
+    LaunchedEffect(true) {
+        emojiCategories.addAll(viewModel.getEmojis(context))
     }
 
     ModalBottomSheet(
@@ -126,39 +130,82 @@ fun EmojiPickerBottomSheet(
                         isSelected = selectedCategoryInd == index,
                         onCategoryClicked = {
                             selectedCategoryInd = index
-                        }
+                        },
                     )
                 }
             }
-            HorizontalPager(
-                state = pagerState
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(400.dp),
+                contentPadding = PaddingValues(
+                    horizontal = 10.dp,
+                    vertical = 10.dp
+                ),
+                state = lazyListState
             ) {
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 28.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(400.dp),
-                    contentPadding = PaddingValues(
-                        horizontal = 20.dp,
-                        vertical = 10.dp
-                    ),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    itemsIndexed(emojis) { index, emoji ->
-                        Text(
-                            text = emoji,
-                            style = TextStyle.Default.copy(
-                                fontSize = 20.sp
-                            ),
-                            modifier = Modifier
-                                .padding(4.dp)
-                                .noRippleClick {
-                                    onEmojiPicked.invoke(emoji)
-                                    onDismiss.invoke()
-                                }
-                        )
-                    }
+                itemsIndexed(emojis) { index, emojiData ->
+                    ItemEmoji(
+                        onEmojiPicked = {
+                            onEmojiPicked.invoke(it)
+                            onDismiss.invoke()
+                        },
+                        emojiData = emojiData
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ItemEmoji(
+    emojiData: EmojiData,
+    onEmojiPicked: (String) -> Unit
+) {
+
+    val emojis = emojiData.emojis
+
+    BoxWithConstraints {
+        val availableWidthPx = with(LocalDensity.current) { maxWidth.toPx() }
+        val minItemSizePx = with(LocalDensity.current) { 28.dp.toPx() }
+
+        val columns = (availableWidthPx / minItemSizePx).toInt().coerceAtLeast(1)
+
+        val paddingValues = PaddingValues(vertical = 10.dp, horizontal = 0.dp)
+
+        val rows = ceil(emojis.size / columns.toFloat()).toInt()
+        val itemHeight = 28.dp
+        val gridHeight = (rows * itemHeight.value).dp +
+                paddingValues.calculateTopPadding() +
+                paddingValues.calculateBottomPadding()
+
+        Column {
+            Text(
+                text = emojiData.categoryName
+            )
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = itemHeight),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(gridHeight),
+                contentPadding = paddingValues,
+                userScrollEnabled = false,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                itemsIndexed(emojis) { index, emoji ->
+                    Text(
+                        text = emoji,
+                        style = TextStyle.Default.copy(
+                            fontSize = 24.sp
+                        ),
+                        modifier = Modifier
+                            .padding(4.dp)
+                            .noRippleClick {
+                                onEmojiPicked.invoke(emoji)
+                            }
+                    )
                 }
             }
         }
@@ -195,45 +242,4 @@ fun ItemCategoryHeader(
                 )
         )
     }
-}
-
-@Composable
-fun getEmojiCategories(): List<EmojiCategory> {
-
-    val context = LocalContext.current
-    val emojiCategoryList = mutableListOf<EmojiCategory>()
-
-    val resources = if (UnicodeRenderableManager.isEmoji12Supported())
-            R.array.emoji_by_category_raw_resources_gender_inclusive
-        else R.array.emoji_by_category_raw_resources
-
-    val categoryNames = stringArrayResource(R.array.category_names)
-    val categoryHeaderIconIds =
-        context.resources.obtainTypedArray(R.array.emoji_categories_icons).use { typedArray ->
-            IntArray(typedArray.length()) {
-                typedArray.getResourceId(it, 0)
-            }
-        }
-
-    val csvResIds = context.resources.obtainTypedArray(resources).use { typedArray ->
-        IntArray(typedArray.length()) {
-            typedArray.getResourceId(it, 0)
-        }
-    }
-
-    csvResIds.forEachIndexed { index, resId ->
-        emojiCategoryList.add(
-            EmojiCategory(
-                resId = resId,
-                categoryIcon = categoryHeaderIconIds[index],
-                categoryName = categoryNames[index]
-            )
-        )
-    }
-
-    return emojiCategoryList
-}
-
-fun getEmojisByCategory(context: Context, @RawRes emojiCsvRes: Int): List<String> {
-    return CSVReaderUtil.readCSV(context, emojiCsvRes)
 }
