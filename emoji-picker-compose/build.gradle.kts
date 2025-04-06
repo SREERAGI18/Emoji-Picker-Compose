@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    id("maven-publish")
 }
 
 android {
@@ -33,6 +34,21 @@ android {
     }
     buildFeatures {
         compose = true
+    }
+}
+
+publishing {
+    publications {
+        create<MavenPublication>("release") {
+            groupId = "io.jitpack"
+            artifactId = "library"
+            version = "1.0"
+
+            // Delay 'from components.release' until after evaluation
+            afterEvaluate {
+                from(components["release"])
+            }
+        }
     }
 }
 
