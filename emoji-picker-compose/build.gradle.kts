@@ -40,15 +40,18 @@ android {
 publishing {
     publications {
         create<MavenPublication>("release") {
-            groupId = "io.jitpack"
-            artifactId = "library"
-            version = "1.0"
+            groupId = "com.github.sreeraj"
+            artifactId = "emoji-picker-compose"
+            version = "0.0.1"
 
             // Delay 'from components.release' until after evaluation
             afterEvaluate {
                 from(components["release"])
             }
         }
+    }
+    repositories {
+        mavenLocal()
     }
 }
 
