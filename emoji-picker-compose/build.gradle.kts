@@ -51,4 +51,7 @@ dependencies {
     implementation(libs.androidx.material3)
 
     implementation("androidx.emoji2:emoji2:1.5.0")
+
+    val lifecycle_version = "2.8.7"
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:$lifecycle_version")
 }
