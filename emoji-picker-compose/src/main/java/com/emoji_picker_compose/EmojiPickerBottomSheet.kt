@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -37,8 +38,11 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -56,6 +60,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.emoji_picker_compose.utils.CSVReaderUtil
 import com.emoji_picker_compose.utils.Extensions.noRippleClick
 import com.emoji_picker_compose.utils.UnicodeRenderableManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlin.math.ceil
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -77,6 +83,7 @@ fun EmojiPickerBottomSheet(
 ) {
     val viewModel = viewModel<EmojiVM>()
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
 
     val emojiCategories = remember {
         mutableStateListOf<EmojiCategory>()
@@ -91,13 +98,19 @@ fun EmojiPickerBottomSheet(
 
     val lazyListState = rememberLazyListState()
 
-    LaunchedEffect(selectedCategoryInd) {
-        lazyListState.scrollToItem(selectedCategoryInd)
-    }
-
     LaunchedEffect(true) {
         emojiCategories.addAll(viewModel.getEmojis(context))
     }
+
+    LaunchedEffect(lazyListState) {
+        snapshotFlow { lazyListState.firstVisibleItemIndex }
+            .collect { firstVisibleIndex ->
+                if (firstVisibleIndex != selectedCategoryInd) {
+                    selectedCategoryInd = firstVisibleIndex
+                }
+            }
+    }
+
 
     ModalBottomSheet(
         modifier = modifier,
@@ -117,19 +130,24 @@ fun EmojiPickerBottomSheet(
         Column(
             modifier = Modifier.fillMaxWidth()
         ) {
-            LazyRow(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(50.dp),
+                    .height(50.dp)
+                    .padding(horizontal = 10.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.Bottom
             ) {
-                itemsIndexed(emojiCategories) { index, emojiCategory ->
+                emojiCategories.forEachIndexed { index, emojiCategory ->
                     ItemCategoryHeader(
+                        modifier = Modifier.weight(1f),
                         emojiCategory = emojiCategory,
                         isSelected = selectedCategoryInd == index,
                         onCategoryClicked = {
                             selectedCategoryInd = index
+                            coroutineScope.launch(Dispatchers.Main) {
+                                lazyListState.scrollToItem(selectedCategoryInd)
+                            }
                         },
                     )
                 }
@@ -140,11 +158,15 @@ fun EmojiPickerBottomSheet(
                     .height(400.dp),
                 contentPadding = PaddingValues(
                     horizontal = 10.dp,
-                    vertical = 10.dp
                 ),
                 state = lazyListState
             ) {
-                itemsIndexed(emojis) { index, emojiData ->
+                itemsIndexed(
+                    items = emojis,
+                    key = { index, emojiData ->
+                        emojiData.categoryName
+                    }
+                ) { index, emojiData ->
                     ItemEmoji(
                         onEmojiPicked = {
                             onEmojiPicked.invoke(it)
@@ -172,17 +194,26 @@ fun ItemEmoji(
 
         val columns = (availableWidthPx / minItemSizePx).toInt().coerceAtLeast(1)
 
-        val paddingValues = PaddingValues(vertical = 10.dp, horizontal = 0.dp)
+        val paddingValues = PaddingValues(
+            top = 10.dp,
+            bottom = 20.dp,
+            start = 0.dp,
+            end = 0.dp
+        )
 
         val rows = ceil(emojis.size / columns.toFloat()).toInt()
-        val itemHeight = 28.dp
-        val gridHeight = (rows * itemHeight.value).dp +
+        val itemHeight = 40.dp
+        val itemVerticalSpacing = 10.dp
+        val itemTotalHeight = itemHeight.value+(itemVerticalSpacing.value*2)
+        val gridHeight = (rows * (itemTotalHeight)).dp +
                 paddingValues.calculateTopPadding() +
                 paddingValues.calculateBottomPadding()
 
-        Column {
+        Column(
+            modifier = Modifier.padding(top = 20.dp)
+        ) {
             Text(
-                text = emojiData.categoryName
+                text = emojiData.categoryName,
             )
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = itemHeight),
@@ -191,10 +222,15 @@ fun ItemEmoji(
                     .height(gridHeight),
                 contentPadding = paddingValues,
                 userScrollEnabled = false,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalArrangement = Arrangement.spacedBy(itemVerticalSpacing)
             ) {
-                itemsIndexed(emojis) { index, emoji ->
+                itemsIndexed(
+                    items = emojis,
+                    key = { index, emoji ->
+                        emoji
+                    }
+                ) { index, emoji ->
                     Text(
                         text = emoji,
                         style = TextStyle.Default.copy(
@@ -214,15 +250,17 @@ fun ItemEmoji(
 
 @Composable
 fun ItemCategoryHeader(
+    modifier: Modifier = Modifier,
     emojiCategory: EmojiCategory,
     isSelected: Boolean,
-    onCategoryClicked:() -> Unit
+    onCategoryClicked:() -> Unit,
 ) {
     Column(
-        modifier = Modifier
+        modifier = modifier
             .noRippleClick {
                 onCategoryClicked.invoke()
-            }
+            },
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Icon(
             painter = painterResource(emojiCategory.categoryIcon),
