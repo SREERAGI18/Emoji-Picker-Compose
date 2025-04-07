@@ -40,7 +40,7 @@ android {
 publishing {
     publications {
         create<MavenPublication>("release") {
-            groupId = "com.github.sreeraj"
+            groupId = "com.github.SREERAGI18"
             artifactId = "emoji-picker-compose"
             version = "0.0.2"
 
