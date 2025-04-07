@@ -121,6 +121,7 @@ fun EmojiPickerBottomSheet(
         sheetMaxWidth = sheetMaxWidth,
         shape = shape,
         contentColor = contentColor,
+        containerColor = containerColor,
         tonalElevation = tonalElevation,
         scrimColor = scrimColor,
         dragHandle = dragHandle,
