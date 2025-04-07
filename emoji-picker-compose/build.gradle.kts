@@ -42,7 +42,7 @@ publishing {
         create<MavenPublication>("release") {
             groupId = "com.github.SREERAGI18"
             artifactId = "emoji-picker-compose"
-            version = "0.0.2"
+            version = "0.0.3"
 
             // Delay 'from components.release' until after evaluation
             afterEvaluate {
