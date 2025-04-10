@@ -57,5 +57,6 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 
-    implementation(project(":emoji-picker-compose"))
+//    implementation(project(":emoji-picker-compose"))
+    implementation("com.github.SREERAGI18:emoji-picker-compose:0.0.1")
 }
